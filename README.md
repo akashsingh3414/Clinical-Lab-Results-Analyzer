@@ -5,33 +5,33 @@ An AI-powered clinical lab results analyzer that uses **LangGraph**, **Gemini LL
 ## Architecture
 
 ```
-React (TypeScript) → FastAPI → LangGraph Agent → Gemini LLM + MCP Server
+React (TypeScript + Vite) → FastAPI → LangGraph Agent → Gemini LLM + MCP Server
 ```
 
 ### Data Flow
 
-1. **Frontend** (React + Vite): User submits lab results as JSON
-2. **FastAPI** (`/analyze_labs` endpoint): Validates and forwards to LangGraph agent
-3. **LangGraph Pipeline**:
-   - **Classify Node**: Looks up reference ranges (hardcoded common tests + MCP fallback)
+1. **Frontend** (React + TypeScript + Vite): User enters lab results via form or CSV upload
+2. **FastAPI** (`/analyze_labs` endpoint): Validates input and forwards to LangGraph agent
+3. **LangGraph Pipeline** (`backend/app/workflows/lab_pipeline.py`):
+   - **Classify Node**: Looks up reference ranges (CSV-backed common tests + MCP fallback)
    - **Route Node**: Groups results by severity (Critical → Warning → Normal → Unknown)
-   - **Explain Node**: Generates clinical explanations using Gemini LLM
-4. **Results**: Returned as grouped findings with explanations and next steps
+   - **Explain Node**: Generates clinical explanations using Gemini LLM in parallel
+4. **Results**: Returned as grouped findings with explanations, reference ranges, and next steps
 
 ## AI Approach
 
-- **LLM Provider**: Google Gemini (`gemini-3.6-flash`) via Google AI Studio
+- **LLM Provider**: Google Gemini (`gemini-3.5-flash`) via Google AI Studio
 - **Reference Data**:
-  - Common labs hardcoded (Hemoglobin, Glucose, WBC, etc.)
+  - CSV-backed common labs (Hemoglobin, Glucose, WBC, Platelets, etc.)
   - Unknown tests use MCP reference lookup tool
-  - No hand-typed catalog — data-driven + fallback pattern
-- **Explanations**: Gemini generates for every result (including Normal, for reassurance)
-- **Explainability**: Each result shows:
+  - Data-driven approach with fallback pattern
+- **Explanations**: Gemini generates for every result (including Normal for reassurance)
+- **Explainability**: Each result displays:
   - Test name + value + unit
   - Reference range used
-  - Status badge (color-coded severity)
-  - LLM-generated explanation
-  - Recommended next step
+  - Status badge (color-coded severity: 🔴 Critical, ⚠️ Warning, ✓ Normal, ❔ Unknown)
+  - LLM-generated clinical explanation
+  - Recommended next steps
 
 ## Features
 
@@ -80,11 +80,20 @@ Then open: `http://localhost:5173`
 
 ```bash
 cd backend
-python test_agent.py
+python tests/test_agent.py
 # Expected output: "agent_ok"
 ```
 
-### 2. API Endpoint
+### 2. Backend Tests (Pytest)
+
+```bash
+cd backend
+python -m pytest tests/ -v
+# Or from repo root:
+python -m pytest backend/tests/ -v
+```
+
+### 3. API Endpoint
 
 ```bash
 curl -X POST http://localhost:8000/analyze_labs \
@@ -97,12 +106,21 @@ curl -X POST http://localhost:8000/analyze_labs \
   }'
 ```
 
-### 3. Frontend (Manual)
+### 4. Frontend (Manual)
 
-1. Go to `http://localhost:5173`
-2. Paste JSON in the textarea (pre-filled with test data)
-3. Click **"Analyze labs"**
-4. See results grouped by severity with explanations
+1. Start backend: `cd backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000`
+2. Start frontend: `cd frontend && npm run dev`
+3. Open `http://localhost:5173`
+4. Enter lab results in the form and click **Analyze Form**
+5. See results grouped by severity with explanations
+
+### 5. Test Data
+
+Use the CSV files in `test_data/` folder for testing:
+
+- `test_data/normal_results.csv` — All normal lab values
+- `test_data/critical_results.csv` — Critical/abnormal values
+- `test_data/mixed_results.csv` — Mix of normal, warning, and critical
 
 ## Example Payloads
 
@@ -163,46 +181,94 @@ curl -X POST http://localhost:8000/analyze_labs \
 ```
 .
 ├── backend/
-│   ├── main.py               # FastAPI app + /analyze_labs endpoint
-│   ├── agent.py              # LangGraph pipeline (classify → route → explain)
-│   ├── mcp_server.py         # MCP tool server (reference_range_lookup)
-│   ├── test_agent.py         # End-to-end agent test
-│   ├── requirements.txt       # Python dependencies
-│   ├── data/                 # Kaggle lab dataset (reference)
-│   └── .env                  # API keys (GOOGLE_API_KEY)
+│   ├── main.py                      # FastAPI app entry point
+│   ├── mcp_server.py                # MCP tool server (reference_range_lookup)
+│   ├── requirements.txt              # Python dependencies
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── api.py                   # FastAPI routes (/health, /analyze_labs)
+│   │   ├── config.py                # Configuration
+│   │   ├── logging_config.py        # Logging setup
+│   │   ├── workflows/
+│   │   │   └── lab_pipeline.py      # LangGraph agent (classify → route → explain)
+│   │   └── services/
+│   │       ├── llm_client.py        # Gemini LLM async calls
+│   │       ├── mcp_client.py        # MCP client singleton
+│   │       └── reference_ranges.py  # Lab reference data + CSV loader
+│   ├── tests/
+│   │   ├── test_agent.py            # End-to-end agent test
+│   │   ├── test_mcp_client.py       # MCP client connectivity test
+│   │   └── conftest.py              # Pytest configuration
+│   └── data/
+│       └── lab_reference_ranges.csv # Lab reference ranges dataset
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx          # Main React component (polished UI)
-│   │   └── main.tsx         # Entry point
+│   │   ├── App.tsx                  # Main React component
+│   │   ├── main.tsx                 # Vite entry point
+│   │   ├── index.css                # Global styles
+│   │   └── components/
+│   │       ├── LabInput.jsx         # Form input (add/remove rows)
+│   │       ├── ResultsDisplay.jsx   # Results grouped by severity
+│   │       ├── SeverityBadge.jsx    # Severity badge component
+│   │       └── types.d.ts           # TypeScript types
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── vite.config.ts
 │
+├── test_data/
+│   ├── normal_results.csv           # All normal lab values
+│   ├── critical_results.csv         # Critical/abnormal values
+│   └── mixed_results.csv            # Mix of normal, warning, critical
+│
+├── .env                             # Your API keys (not in repo)
+├── .env.example                     # Template
 └── README.md
 ```
 
 ## Key Implementation Details
 
-### Phase 3: LangGraph Agent
+### Backend Architecture
 
-- `classify_node`: Reference range lookup (hardcoded → MCP fallback)
-- `route_node`: Group by severity threshold
-- `explain_node`: Gemini LLM call for each result
-- `determine_status()`: Maps value to Critical/Warning/Normal based on range
+**Modular Package Structure** (`backend/app/`)
 
-### Phase 4: FastAPI Integration
+- `app/api.py` — FastAPI routes with Pydantic validation
+- `app/workflows/lab_pipeline.py` — LangGraph state graph (classify → route → explain)
+- `app/services/llm_client.py` — Async Gemini calls with timeout protection
+- `app/services/mcp_client.py` — Singleton MCP client (connection reuse)
+- `app/services/reference_ranges.py` — CSV-backed lab reference data + normalization
+- `app/logging_config.py` — Structured logging for all operations
 
-- Pydantic models for input validation
-- CORS configured for Vite dev server
+**LangGraph Nodes**
+
+- `classify_node`: Normalize test names, lookup reference ranges (CSV → MCP fallback)
+- `route_node`: Determine severity, group by Critical/Warning/Normal/Unknown
+- `explain_node`: Call Gemini in parallel for each result with timeout
+- `determine_status()`: Maps numeric value to severity based on reference range
+
+**FastAPI Integration**
+
+- Pydantic models for input validation (`LabResultInput`, `LabBatchInput`)
+- CORS configured for Vite dev server (`localhost:5173`)
+- Structured error handling and logging
 - JSON response grouped by severity
 
-### Phase 5: React Frontend
+### Frontend Architecture
 
-- Textarea JSON input (pre-filled with test data)
-- Real-time validation + error handling
-- Color-coded results display by severity
-- Reference ranges shown inline
+**React Components** (Modular)
+
+- `App.tsx` — Health check, form submission, results display
+- `LabInput.jsx` — Form-based input with add/remove row functionality
+- `ResultsDisplay.jsx` — Results grouped by severity with badge/explanation
+- `SeverityBadge.jsx` — Color-coded status chips (🔴 Critical, ⚠️ Warning, ✓ Normal, ❔ Unknown)
+
+**Features**
+
+- Form-based input (user-friendly, no JSON paste)
+- Real-time form validation (test name required, numeric values)
+- Loading state while Gemini processes
+- Error handling and display
+- Reference ranges shown inline with results
 
 ## Environment Variables
 
@@ -233,15 +299,20 @@ GOOGLE_API_KEY=your_key_here
 - **Integration**: Model Context Protocol (MCP) for tool-based lookups
 - **LLM**: Gemini (via Google AI Studio free tier)
 
-## Submission Checklist
+## Deliverables Checklist
 
-- ✅ Phases 3-7 complete (Graph, API, UI, Polish)
-- ✅ End-to-end test passing
-- ✅ All dependencies in requirements.txt
-- ✅ .env.example with placeholders
-- ✅ README with setup, testing, examples
-- ✅ Clean git history
-- ✅ Repo public on GitHub
+- ✅ **GitHub Repository** — Public repo with git history
+- ✅ **Backend Implementation** — Modular FastAPI + LangGraph pipeline
+- ✅ **Frontend Implementation** — React form-based UI with component structure
+- ✅ **LLM Integration** — Gemini for clinical explanations
+- ✅ **MCP Tool Server** — Reference range lookup with fallback
+- ✅ **Input Validation** — Pydantic models for backend validation
+- ✅ **Test Suite** — End-to-end agent test + MCP client test
+- ✅ **Test Data** — 3 CSV files (normal, critical, mixed results)
+- ✅ **Logging** — Structured logging for all operations
+- ✅ **Environment Setup** — .env and .env.example with clear templates
+- ✅ **Documentation** — README with setup, architecture, testing, examples
+- ✅ **Clean Git History** — Meaningful commits showing iteration
 
 ## License
 

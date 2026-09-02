@@ -11,37 +11,57 @@ const defaultPayload = {
 
 export default function LabInput({ onAnalyze, loading, backendError }) {
   const [formRows, setFormRows] = useState(defaultPayload.raw_results);
+  const [validationError, setValidationError] = useState('');
 
   const updateRow = (index, field, value) => {
+    setValidationError('');
     setFormRows((current) =>
       current.map((row, rowIndex) => (rowIndex === index ? { ...row, [field]: field === 'value' ? Number(value) : value } : row)),
     );
   };
 
   const addRow = () => {
-    setFormRows((current) => [...current, { test_name: '', value: 0, unit: '' }]);
+    setFormRows((current) => [...current, { test_name: '', value: '', unit: '' }]);
   };
 
   const removeRow = (index) => {
-    setFormRows((current) => current.filter((_, rowIndex) => rowIndex !== index));
+    if (formRows.length > 1) {
+      setFormRows((current) => current.filter((_, rowIndex) => rowIndex !== index));
+    }
+  };
+
+  const getValidRowsCount = () => {
+    return formRows.filter((row) => row.test_name?.trim() && !Number.isNaN(Number(row.value)) && Number(row.value) !== '').length;
   };
 
   const submitForm = () => {
-    const cleaned = formRows
-      .filter((row) => row.test_name?.trim())
-      .map((row) => ({
-        test_name: row.test_name.trim(),
-        value: Number(row.value),
-        unit: row.unit?.trim() || '',
-      }));
+    const validRows = formRows.filter((row) => {
+      const testName = row.test_name?.trim();
+      const value = Number(row.value);
+      return testName && !Number.isNaN(value);
+    });
 
+    if (validRows.length === 0) {
+      setValidationError('Please enter at least one test result with a valid name and numeric value.');
+      return;
+    }
+
+    const cleaned = validRows.map((row) => ({
+      test_name: row.test_name.trim(),
+      value: Number(row.value),
+      unit: row.unit?.trim() || '',
+    }));
+
+    setValidationError('');
     onAnalyze({ raw_results: cleaned });
-    setPayload(JSON.stringify({ raw_results: cleaned }, null, 2));
   };
+
+  const canSubmit = getValidRowsCount() > 0 && !loading;
 
   return (
     <div style={{ marginBottom: '1.5rem' }}>
       {backendError ? <p style={{ color: '#B3261E', marginBottom: '1rem' }}>Error: {backendError}</p> : null}
+      {validationError ? <p style={{ color: '#B3261E', marginBottom: '1rem' }}>⚠️ {validationError}</p> : null}
 
       <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1rem' }}>
         {formRows.map((row, index) => (
@@ -49,23 +69,23 @@ export default function LabInput({ onAnalyze, loading, backendError }) {
             <input
               value={row.test_name}
               onChange={(event) => updateRow(index, 'test_name', event.target.value)}
-              placeholder="Test name"
+              placeholder="Test name (required)"
               style={{ border: '1px solid #dfe4ea', borderRadius: 8, padding: '0.7rem 0.8rem' }}
             />
             <input
               type="number"
               value={row.value}
               onChange={(event) => updateRow(index, 'value', event.target.value)}
-              placeholder="Value"
+              placeholder="Value (required)"
               style={{ border: '1px solid #dfe4ea', borderRadius: 8, padding: '0.7rem 0.8rem' }}
             />
             <input
               value={row.unit}
               onChange={(event) => updateRow(index, 'unit', event.target.value)}
-              placeholder="Unit"
+              placeholder="Unit (optional)"
               style={{ border: '1px solid #dfe4ea', borderRadius: 8, padding: '0.7rem 0.8rem' }}
             />
-            <button type="button" onClick={() => removeRow(index)} disabled={formRows.length === 1} style={{ border: '1px solid #dfe4ea', borderRadius: 8, padding: '0.65rem 0.8rem', background: '#fff' }}>
+            <button type="button" onClick={() => removeRow(index)} disabled={formRows.length === 1} style={{ border: '1px solid #dfe4ea', borderRadius: 8, padding: '0.65rem 0.8rem', background: '#fff', cursor: formRows.length === 1 ? 'not-allowed' : 'pointer', opacity: formRows.length === 1 ? 0.5 : 1 }}>
               Remove
             </button>
           </div>
@@ -76,8 +96,8 @@ export default function LabInput({ onAnalyze, loading, backendError }) {
         <button type="button" onClick={addRow} style={{ background: '#eef2f6', color: '#1f2937', border: '1px solid #dfe4ea', borderRadius: 8, padding: '0.7rem 1rem' }}>
           + Add Test Result
         </button>
-        <button type="button" onClick={submitForm} disabled={loading} style={{ background: '#1f2937', color: '#fff', border: 'none', borderRadius: 8, padding: '0.7rem 1rem', cursor: loading ? 'wait' : 'pointer' }}>
-          {loading ? 'Analyzing...' : 'Analyze Form'}
+        <button type="button" onClick={submitForm} disabled={!canSubmit} style={{ background: canSubmit ? '#1f2937' : '#ccc', color: '#fff', border: 'none', borderRadius: 8, padding: '0.7rem 1rem', cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
+          {loading ? 'Analyzing...' : `Analyze Form (${getValidRowsCount()} valid)`}
         </button>
       </div>
 
