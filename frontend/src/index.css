@@ -1,22 +1,49 @@
 :root {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --color-critical: #B3261E;
+  --color-critical-bg: #FBEAE9;
+  --color-warning: #92600A;
+  --color-warning-bg: #FCF3E3;
+  --color-normal: #1E6B45;
+  --color-normal-bg: #E9F5EF;
+  --color-unknown: #5B6472;
+  --color-unknown-bg: #EEF0F2;
+  --color-ink: #1A1D21;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', ui-monospace, monospace;
+
+  font-family: Inter, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #1f2937;
-  background: #f8fafc;
+  color: var(--color-ink);
+  background: #f5f7f9;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  background: #f5f7f9;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+  background: #f5f7f9;
+  color: var(--color-ink);
 }
 
-h1 {
-  margin-bottom: 1rem;
+h1, h2, h3, p {
+  margin-top: 0;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+textarea:focus,
+button:focus {
+  outline: 2px solid rgba(31, 41, 55, 0.18);
+  outline-offset: 2px;
 }

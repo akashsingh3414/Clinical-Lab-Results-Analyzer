@@ -1,65 +1,20 @@
 import asyncio
-import json
-import os
 import time
 from typing import Any, Literal
 
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
 from langgraph.graph import END, StateGraph
-from logging_config import logger
 
-load_dotenv()
+from app.logging_config import logger
+from app.services.llm_client import get_explanation_async
+from app.services.reference_ranges import HARDCODED_RANGES, build_reference_lookup_payload, normalize_name
+from app.services.mcp_client import MCPClientSingleton
 
-client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-
-HARDCODED_RANGES = {
-    "hemoglobin": {"low": 13.5, "high": 17.5, "unit": "g/dL"},
-    "glucose": {"low": 70, "high": 100, "unit": "mg/dL"},
-    "wbc": {"low": 4.5, "high": 11.0, "unit": "x10^9/L"},
-    "sodium": {"low": 135, "high": 145, "unit": "mmol/L"},
-    "potassium": {"low": 3.5, "high": 5.1, "unit": "mmol/L"},
-    "creatinine": {"low": 0.6, "high": 1.2, "unit": "mg/dL"},
-    "cholesterol": {"low": 0, "high": 200, "unit": "mg/dL"},
-    "ldl": {"low": 0, "high": 100, "unit": "mg/dL"},
-    "hdl": {"low": 40, "high": 60, "unit": "mg/dL"},
-    "triglycerides": {"low": 0, "high": 150, "unit": "mg/dL"},
-}
-
-PROMPT_TEMPLATE = """You are a clinical assistant. Given this lab result, respond ONLY with JSON:
-{{"explanation": "<1-2 sentence clinical explanation>", "next_step": "<short suggested action>"}}
-
-Test: {test_name}
-Value: {value} {unit}
-Reference range: {ref_low}-{ref_high} {unit}
-Status: {status}
-"""
+mcp_client = MCPClientSingleton.get()
 
 
-def call_reference_range_lookup(test_name: str) -> dict[str, Any] | None:
+async def call_reference_range_lookup(test_name: str) -> dict[str, Any] | None:
     try:
-        # Keep the MCP fallback tiny and real: use the stdio MCP tool from the spike.
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
-
-        async def _lookup() -> dict:
-            server_params = StdioServerParameters(
-                command=r"D:\Dev\Python\Clinical Lab Results Analyzer\.venv\Scripts\python.exe",
-                args=["mcp_server.py"],
-                cwd=r"D:\Dev\Python\Clinical Lab Results Analyzer\backend",
-            )
-            async with stdio_client(server_params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    result = await session.call_tool(
-                        "reference_range_lookup",
-                        arguments={"test_name": test_name},
-                    )
-                    payload = result.content[0].text if result.content else "{}"
-                    return json.loads(payload)
-
-        return asyncio.run(_lookup())
+        return await mcp_client.call_reference_lookup(test_name)
     except Exception:
         return None
 
@@ -80,35 +35,7 @@ def determine_status(value: float, ref_low: float | None, ref_high: float | None
     return "Normal"
 
 
-def get_explanation(test_name: str, value: float, unit: str, ref_low: float | None, ref_high: float | None, status: str) -> dict[str, str]:
-    if status == "Unknown":
-        return {
-            "explanation": "Reference range unavailable for this test.",
-            "next_step": "Manual review recommended.",
-        }
-
-    prompt = PROMPT_TEMPLATE.format(
-        test_name=test_name,
-        value=value,
-        unit=unit,
-        ref_low=ref_low,
-        ref_high=ref_high,
-        status=status,
-    )
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(response_mime_type="application/json"),
-    )
-    text = response.text.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:].lstrip()
-    return json.loads(text)
-
-
-def classify_node(state: dict[str, Any]) -> dict[str, Any]:
+async def classify_node(state: dict[str, Any]) -> dict[str, Any]:
     logger.info("→ classify_node started")
     start = time.time()
     try:
@@ -131,9 +58,13 @@ def classify_node(state: dict[str, Any]) -> dict[str, Any]:
                 classified.append({**result, "ref_low": None, "ref_high": None, "status": "Unknown", "explanation": "Negative value is invalid for this lab result.", "next_step": "Re-enter a valid positive numeric value."})
                 continue
 
-            ref = HARDCODED_RANGES.get(test_name.lower())
+            ref = HARDCODED_RANGES.get(normalize_name(test_name))
             if ref is None:
-                ref = call_reference_range_lookup(test_name)
+                ref = await call_reference_range_lookup(test_name)
+                if ref is None or "error" in ref:
+                    ref = HARDCODED_RANGES.get(normalize_name(test_name).replace(" ", ""))
+
+            ref = build_reference_lookup_payload(ref)
 
             if ref is None or "error" in ref:
                 status = "Unknown"
@@ -164,7 +95,7 @@ def classify_node(state: dict[str, Any]) -> dict[str, Any]:
         raise
 
 
-def route_node(state: dict[str, Any]) -> dict[str, Any]:
+async def route_node(state: dict[str, Any]) -> dict[str, Any]:
     logger.info("→ route_node started")
     start = time.time()
     try:
@@ -180,35 +111,48 @@ def route_node(state: dict[str, Any]) -> dict[str, Any]:
         raise
 
 
-def explain_node(state: dict[str, Any]) -> dict[str, Any]:
+async def explain_node(state: dict[str, Any]) -> dict[str, Any]:
     logger.info("→ explain_node started")
     start = time.time()
     try:
+        all_results: list[dict[str, Any]] = []
         for group_name in ["Critical", "Warning", "Normal", "Unknown"]:
-            for result in state["routed"].get(group_name, []):
-                if result["status"] == "Unknown":
-                    result["explanation"] = "Reference range unavailable for this test."
-                    result["next_step"] = "Manual review recommended."
-                    continue
-                t0 = time.time()
-                try:
-                    explain = get_explanation(
+            all_results.extend(state["routed"].get(group_name, []))
+
+        async def process_result(result: dict[str, Any]) -> None:
+            if result["status"] == "Unknown":
+                result["explanation"] = "Reference range unavailable for this test."
+                result["next_step"] = "Manual review recommended."
+                return
+
+            t0 = time.time()
+            try:
+                explain = await asyncio.wait_for(
+                    get_explanation_async(
                         result["test_name"],
                         result["value"],
                         result.get("unit", ""),
                         result.get("ref_low"),
                         result.get("ref_high"),
                         result["status"],
-                    )
-                    result["explanation"] = explain["explanation"]
-                    result["next_step"] = explain["next_step"]
-                    t_elapsed = time.time() - t0
-                    logger.info(f"  Gemini call for {result['test_name']} ({result['status']}) — {t_elapsed:.2f}s")
-                except Exception as e:
-                    t_elapsed = time.time() - t0
-                    logger.error(f"  Gemini call FAILED for {result['test_name']} — {e}")
-                    result["explanation"] = "Explanation unavailable (LLM error)."
-                    result["next_step"] = "Manual review recommended."
+                        timeout=10,
+                    ),
+                    timeout=10,
+                )
+                result["explanation"] = explain["explanation"]
+                result["next_step"] = explain["next_step"]
+                logger.info(f"  Gemini call for {result['test_name']} ({result['status']}) — {time.time() - t0:.2f}s")
+            except asyncio.TimeoutError:
+                logger.error(f"  Gemini call TIMED OUT for {result['test_name']} after 10s")
+                result["explanation"] = "Explanation temporarily unavailable."
+                result["next_step"] = "Manual review recommended."
+            except Exception as e:
+                logger.error(f"  Gemini call FAILED for {result['test_name']} — {e}")
+                result["explanation"] = "Explanation unavailable (LLM error)."
+                result["next_step"] = "Manual review recommended."
+
+        await asyncio.gather(*(process_result(result) for result in all_results))
+
         elapsed = time.time() - start
         logger.info(f"✓ explain_node completed in {elapsed:.2f}s")
         return state
