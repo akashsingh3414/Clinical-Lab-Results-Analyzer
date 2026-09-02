@@ -77,20 +77,21 @@ source ../.venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the root or `backend/` directory:
+Create a `.env` file in the root directory:
 ```env
 GOOGLE_API_KEY=your_gemini_api_key_here
 ```
 
 **Start the FastAPI backend:**
 ```powershell
-# If virtual environment is activated:
+# From the backend directory:
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-# Or directly without activation:
+# Or directly using the virtual environment:
 ..\.venv\Scripts\uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
-Backend will be live at: `http://localhost:8000` (Docs: `http://localhost:8000/docs`).
+Backend will be live at: `http://localhost:8000` (API Docs: `http://localhost:8000/docs`).
+
 
 ---
 

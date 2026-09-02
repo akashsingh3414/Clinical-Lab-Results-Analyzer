@@ -6,7 +6,10 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
+# Load root .env first, fallback to backend .env if present
 load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(BACKEND_DIR / ".env")
+
 
 
 def get_google_api_key() -> str:
