@@ -122,7 +122,7 @@ async def explain_node(state: dict[str, Any]) -> dict[str, Any]:
         async def process_result(result: dict[str, Any]) -> None:
             if result["status"] == "Unknown":
                 result["explanation"] = "Reference range unavailable for this test."
-                result["next_step"] = "Manual review recommended."
+                result["next_step"] = "Consult a physician or clinical specialist for manual evaluation."
                 return
 
             t0 = time.time()
@@ -145,11 +145,12 @@ async def explain_node(state: dict[str, Any]) -> dict[str, Any]:
             except asyncio.TimeoutError:
                 logger.error(f"  Gemini call TIMED OUT for {result['test_name']} after 10s")
                 result["explanation"] = "Explanation temporarily unavailable."
-                result["next_step"] = "Manual review recommended."
+                result["next_step"] = "Consult a physician or clinical specialist for manual evaluation."
             except Exception as e:
                 logger.error(f"  Gemini call FAILED for {result['test_name']} — {e}")
                 result["explanation"] = "Explanation unavailable (LLM error)."
-                result["next_step"] = "Manual review recommended."
+                result["next_step"] = "Consult a physician or clinical specialist for manual evaluation."
+
 
         await asyncio.gather(*(process_result(result) for result in all_results))
 

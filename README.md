@@ -1,322 +1,146 @@
 # Clinical Lab Results Analyzer
 
-An AI-powered clinical lab results analyzer that uses **LangGraph**, **Gemini LLM**, and **MCP** to classify, route, and explain laboratory test results with intelligent explainability.
+An AI-powered full-stack clinical decision support web application built with **FastAPI**, **Model Context Protocol (MCP)**, **LangGraph**, **Google Gemini**, and **React**.
+
+The application classifies patient lab tests into clinical triage tiers (**Critical**, **Warning**, **Normal**, **Unknown**), calculates reference interval deviations, and generates Explainable AI clinical significance assessments with recommended next steps.
+
+---
 
 ## Architecture
 
 ```
-React (TypeScript + Vite) → FastAPI → LangGraph Agent → Gemini LLM + MCP Server
+[ React + TypeScript Frontend ] 
+         │
+         ▼  (POST /analyze_labs)
+[ FastAPI Backend ]
+         │
+         ▼
+[ LangGraph Agent Pipeline ]
+   ├── 1. Classify Node (Hardcoded Ranges & Kaggle Dataset Lookup via MCP Server)
+   ├── 2. Route Node (Priority Sorting: Critical ➔ Warning ➔ Normal ➔ Unknown)
+   └── 3. Explain Node (Gemini GenAI with in-memory LLM Caching & Fallbacks)
 ```
 
-### Data Flow
+### Core Architecture Components
 
-1. **Frontend** (React + TypeScript + Vite): User enters lab results via form or CSV upload
-2. **FastAPI** (`/analyze_labs` endpoint): Validates input and forwards to LangGraph agent
-3. **LangGraph Pipeline** (`backend/app/workflows/lab_pipeline.py`):
-   - **Classify Node**: Looks up reference ranges (CSV-backed common tests + MCP fallback)
-   - **Route Node**: Groups results by severity (Critical → Warning → Normal → Unknown)
-   - **Explain Node**: Generates clinical explanations using Gemini LLM in parallel
-4. **Results**: Returned as grouped findings with explanations, reference ranges, and next steps
+1. **Frontend (React + Vite + TypeScript)**:
+   - **Preset 1-Click Scenarios**: Instant loading of synthetic test panels (`Normal`, `Mixed`, `Critical`).
+   - **Direct CSV File Upload**: Drag-and-drop or file browser for `.csv` test files.
+   - **Interactive Tabular Form**: Dynamic row additions, removals, and validation.
+   - **Visual Reference Range Meter**: Visual gauge showing patient value relative to the normal interval.
+   - **Severity Badges**: Standard color-coded status badges (`🔴 Critical`, `⚠️ Warning`, `✓ Normal`).
 
-## AI Approach
+2. **Backend (Python FastAPI)**:
+   - Endpoint: `POST /analyze_labs` (Accepts `{"raw_results": [...]}`, `{"labs": [...]}`, or direct lists `[...]`).
+   - Health Check: `GET /health`.
+   - **In-Memory Caching**: Avoids duplicate Gemini API calls and protects against rate limits (HTTP 429).
+   - **Resilient Fallbacks**: If external API quotas are exhausted, deterministic clinical fallback explanations ensure the service never fails.
 
-- **LLM Provider**: Google Gemini (`gemini-3.5-flash`) via Google AI Studio
-- **Reference Data**:
-  - CSV-backed common labs (Hemoglobin, Glucose, WBC, Platelets, etc.)
-  - Unknown tests use MCP reference lookup tool
-  - Data-driven approach with fallback pattern
-- **Explanations**: Gemini generates for every result (including Normal for reassurance)
-- **Explainability**: Each result displays:
-  - Test name + value + unit
-  - Reference range used
-  - Status badge (color-coded severity: 🔴 Critical, ⚠️ Warning, ✓ Normal, ❔ Unknown)
-  - LLM-generated clinical explanation
-  - Recommended next steps
+3. **Model Context Protocol (MCP Server)**:
+   - `backend/mcp_server.py` runs an MCP server exposing `reference_range_lookup(test_name)`.
+   - Loads and queries reference intervals directly from the Kaggle dataset (`backend/data/lab_test_results_public.csv`).
+   - Connected over standard MCP stdio protocol via `mcp_client.py`.
 
-## Features
+4. **GenAI Integration**:
+   - Provider: **Google Gemini** (`gemini-3.6-flash`).
+   - Generates structured clinical explanations focusing on *why* a result is flagged and actionable next steps.
 
-✅ **Severity-Based Routing** — Critical results flagged first
-✅ **Reference Range Comparison** — Automatic range lookup with thresholds
-✅ **Clinical Explanations** — Gemini generates why each result matters
-✅ **Edge Case Handling** — Missing/invalid values marked Unknown, no crashes
-✅ **MCP Fallback** — Unknown lab tests resolved via Model Context Protocol
+---
 
-## Setup
+## Quick Start
 
-### Backend
+### Prerequisites
+- Python 3.10+
+- Node.js 18+
+- Google Gemini API Key from [Google AI Studio](https://aistudio.google.com/app/apikeys)
 
-```bash
+---
+
+### 1. Backend Setup
+
+From the repository root:
+
+```powershell
+# Navigate to backend
 cd backend
+
+# Create virtual environment (if not already created)
 python -m venv .venv
-source .venv/bin/activate   # or .venv\Scripts\activate on Windows
+
+# Activate virtual environment
+# On Windows (PowerShell):
+..\.venv\Scripts\Activate.ps1
+# On Linux/macOS:
+source ../.venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-Add your Gemini API key to `.env`:
-
+Create a `.env` file in the root or `backend/` directory:
+```env
+GOOGLE_API_KEY=your_gemini_api_key_here
 ```
-GOOGLE_API_KEY=your_key_here
-```
 
-Then start the server:
-
-```bash
+**Start the FastAPI backend:**
+```powershell
+# If virtual environment is activated:
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Or directly without activation:
+..\.venv\Scripts\uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
+Backend will be live at: `http://localhost:8000` (Docs: `http://localhost:8000/docs`).
 
-### Frontend
+---
 
-```bash
+### 2. Frontend Setup
+
+In a new terminal, from the repository root:
+
+```powershell
+# Navigate to frontend
 cd frontend
+
+# Install dependencies
 npm install
+
+# Start development server
 npm run dev
 ```
+Frontend will be live at: `http://localhost:5173`.
 
-Then open: `http://localhost:5173`
+---
 
-## Testing
+## Synthetic Benchmark Datasets
 
-### 1. Backend Agent (Direct)
+Three synthetic test datasets are provided in `backend/test_data/`:
+1. `normal_results.csv`: All tests fall strictly within normal physiological reference ranges.
+2. `mixed_results.csv`: Realistic panel with a blend of normal values and moderate elevations (e.g. elevated Glucose and liver enzymes).
+3. `critical_results.csv`: High-acuity abnormal results requiring immediate triage (e.g., severe hyperkalemia, profound anemia, severe hyperglycemia).
 
-```bash
+> **Tip**: In the frontend UI, you can use the **1-Click Test Scenarios** buttons or drag and drop any of these CSV files directly to evaluate findings.
+
+---
+
+## Running Tests
+
+To run the automated backend test suite:
+
+```powershell
 cd backend
-python tests/test_agent.py
-# Expected output: "agent_ok"
+..\.venv\Scripts\pytest -v tests/test_agent.py
 ```
 
-### 2. Backend Tests (Pytest)
+### Verified Test Cases:
+- `test_determine_status`: Validates deviation thresholds for Normal, Warning, Critical, and edge cases.
+- `test_classify_and_route_nodes`: Validates LangGraph state transitions and severity priority sorting.
+- `test_llm_cache_storage`: Validates zero-latency in-memory LLM response caching.
 
-```bash
-cd backend
-python -m pytest tests/ -v
-# Or from repo root:
-python -m pytest backend/tests/ -v
-```
+---
 
-### 3. API Endpoint
+## Explainable AI & Clinical Safety
 
-```bash
-curl -X POST http://localhost:8000/analyze_labs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "raw_results": [
-      {"test_name": "Hemoglobin", "value": 8.2, "unit": "g/dL"},
-      {"test_name": "Glucose", "value": 105, "unit": "mg/dL"}
-    ]
-  }'
-```
-
-### 4. Frontend (Manual)
-
-1. Start backend: `cd backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000`
-2. Start frontend: `cd frontend && npm run dev`
-3. Open `http://localhost:5173`
-4. Enter lab results in the form and click **Analyze Form**
-5. See results grouped by severity with explanations
-
-### 5. Test Data
-
-Use the CSV files in `backend/test_data/` folder for testing:
-
-- `backend/test_data/normal_results.csv` — All normal lab values
-- `backend/test_data/critical_results.csv` — Critical/abnormal values
-- `backend/test_data/mixed_results.csv` — Mix of normal, warning, and critical
-
-Or paste them directly in the frontend using the **Paste CSV** tab in the form.
-
-## Example Payloads
-
-### All Normal Results
-
-```json
-{
-  "raw_results": [
-    {"test_name": "Hemoglobin", "value": 14.5, "unit": "g/dL"},
-    {"test_name": "Glucose", "value": 85, "unit": "mg/dL"}
-  ]
-}
-```
-
-**Expected**: Both in "Normal" group with green badges ✓
-
-### Critical Results
-
-```json
-{
-  "raw_results": [
-    {"test_name": "Hemoglobin", "value": 7.0, "unit": "g/dL"},
-    {"test_name": "Glucose", "value": 400, "unit": "mg/dL"}
-  ]
-}
-```
-
-**Expected**: Both in "Critical" group with red badges 🔴, urgent explanations
-
-### Unknown Test (MCP Fallback)
-
-```json
-{
-  "raw_results": [
-    {"test_name": "RareLabTestXYZ", "value": 50, "unit": "mg/dL"}
-  ]
-}
-```
-
-**Expected**: "Unknown" group with ❔ badge, "Reference range unavailable" message
-
-### Edge Cases
-
-```json
-{
-  "raw_results": [
-    {"test_name": "Hemoglobin", "value": -5.0, "unit": "g/dL"},
-    {"test_name": "", "value": 100, "unit": "mg/dL"},
-    {"test_name": "Glucose", "value": null, "unit": "mg/dL"}
-  ]
-}
-```
-
-**Expected**: All marked "Unknown" with explanatory error messages, no crashes
-
-## Project Structure
-
-```
-.
-├── backend/
-│   ├── main.py                      # FastAPI app entry point
-│   ├── mcp_server.py                # MCP tool server (reference_range_lookup)
-│   ├── requirements.txt              # Python dependencies
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── api.py                   # FastAPI routes (/health, /analyze_labs)
-│   │   ├── config.py                # Configuration
-│   │   ├── logging_config.py        # Logging setup
-│   │   ├── workflows/
-│   │   │   └── lab_pipeline.py      # LangGraph agent (classify → route → explain)
-│   │   └── services/
-│   │       ├── llm_client.py        # Gemini LLM async calls
-│   │       ├── mcp_client.py        # MCP client singleton
-│   │       └── reference_ranges.py  # Lab reference data + CSV loader
-│   ├── tests/
-│   │   ├── test_agent.py            # End-to-end agent test
-│   │   ├── test_mcp_client.py       # MCP client connectivity test
-│   │   └── conftest.py              # Pytest configuration
-│   ├── test_data/
-│   │   ├── normal_results.csv       # All normal lab values
-│   │   ├── critical_results.csv     # Critical/abnormal values
-│   │   └── mixed_results.csv        # Mix of normal, warning, critical
-│   └── data/
-│       └── lab_reference_ranges.csv # Lab reference ranges dataset
-│
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx                  # Main React component
-│   │   ├── main.tsx                 # Vite entry point
-│   │   ├── index.css                # Global styles
-│   │   └── components/
-│   │       ├── LabInput.jsx         # Form input (add/remove rows)
-│   │       ├── ResultsDisplay.jsx   # Results grouped by severity
-│   │       ├── SeverityBadge.jsx    # Severity badge component
-│   │       └── types.d.ts           # TypeScript types
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-│
-├── .env                             # Your API keys (not in repo)
-├── .env.example                     # Template
-└── README.md
-```
-
-## Key Implementation Details
-
-### Backend Architecture
-
-**Modular Package Structure** (`backend/app/`)
-
-- `app/api.py` — FastAPI routes with Pydantic validation
-- `app/workflows/lab_pipeline.py` — LangGraph state graph (classify → route → explain)
-- `app/services/llm_client.py` — Async Gemini calls with timeout protection
-- `app/services/mcp_client.py` — Singleton MCP client (connection reuse)
-- `app/services/reference_ranges.py` — CSV-backed lab reference data + normalization
-- `app/logging_config.py` — Structured logging for all operations
-
-**LangGraph Nodes**
-
-- `classify_node`: Normalize test names, lookup reference ranges (CSV → MCP fallback)
-- `route_node`: Determine severity, group by Critical/Warning/Normal/Unknown
-- `explain_node`: Call Gemini in parallel for each result with timeout
-- `determine_status()`: Maps numeric value to severity based on reference range
-
-**FastAPI Integration**
-
-- Pydantic models for input validation (`LabResultInput`, `LabBatchInput`)
-- CORS configured for Vite dev server (`localhost:5173`)
-- Structured error handling and logging
-- JSON response grouped by severity
-
-### Frontend Architecture
-
-**React Components** (Modular)
-
-- `App.tsx` — Health check, form submission, results display
-- `LabInput.jsx` — Form-based input with two modes:
-  - **Form Input**: Add/remove rows manually
-  - **Paste CSV**: Paste CSV data (with headers) directly from test_data folder
-- `ResultsDisplay.jsx` — Results grouped by severity with badge/explanation
-- `SeverityBadge.jsx` — Color-coded status chips (🔴 Critical, ⚠️ Warning, ✓ Normal, ❔ Unknown)
-
-**Features**
-
-- Form-based input (user-friendly, no JSON paste)
-- Real-time form validation (test name required, numeric values)
-- Loading state while Gemini processes
-- Error handling and display
-- Reference ranges shown inline with results
-
-## Environment Variables
-
-**`.env` (required)**
-
-```
-GOOGLE_API_KEY=your_google_ai_studio_key
-```
-
-**`.env.example`** (template for users)
-
-```
-GOOGLE_API_KEY=your_key_here
-```
-
-## Explainability & Trustworthiness
-
-- **Every result is explained** — not just flagged, but clinically justified
-- **Reference ranges are visible** — users see the thresholds being applied
-- **No black-box decisions** — Gemini explains why (e.g., "Hemoglobin is critically low because it's 38% below the minimum")
-- **Next steps are actionable** — not just status, but "Recommend iron supplementation" or "Follow up with endocrinologist"
-- **Edge cases are handled gracefully** — missing data doesn't crash, it's reported clearly
-
-## Technologies
-
-- **Backend**: Python, FastAPI, LangGraph, Google Generative AI
-- **Frontend**: React, TypeScript, Vite
-- **Integration**: Model Context Protocol (MCP) for tool-based lookups
-- **LLM**: Gemini (via Google AI Studio free tier)
-
-## Deliverables Checklist
-
-- ✅ **GitHub Repository** — Public repo with git history
-- ✅ **Backend Implementation** — Modular FastAPI + LangGraph pipeline
-- ✅ **Frontend Implementation** — React form-based UI with component structure
-- ✅ **LLM Integration** — Gemini for clinical explanations
-- ✅ **MCP Tool Server** — Reference range lookup with fallback
-- ✅ **Input Validation** — Pydantic models for backend validation
-- ✅ **Test Suite** — End-to-end agent test + MCP client test
-- ✅ **Test Data** — 3 CSV files (normal, critical, mixed results)
-- ✅ **Logging** — Structured logging for all operations
-- ✅ **Environment Setup** — .env and .env.example with clear templates
-- ✅ **Documentation** — README with setup, architecture, testing, examples
-- ✅ **Clean Git History** — Meaningful commits showing iteration
-
-## License
-
-MIT
+- **No Black Boxes**: Every abnormal result displays the reference boundaries against which it was evaluated, accompanied by a visual range gauge.
+- **Actionable Guidance**: Abnormalities provide clinical context and structured recommendations (e.g., repeating the test, scheduling specialist consults, or urgent physician review).
+- **Graceful Error Handling**: Missing values, non-numeric inputs, or negative values are routed to the `Unknown` category with clear guidance to avoid diagnostic errors.
