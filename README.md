@@ -116,11 +116,13 @@ curl -X POST http://localhost:8000/analyze_labs \
 
 ### 5. Test Data
 
-Use the CSV files in `test_data/` folder for testing:
+Use the CSV files in `backend/test_data/` folder for testing:
 
-- `test_data/normal_results.csv` — All normal lab values
-- `test_data/critical_results.csv` — Critical/abnormal values
-- `test_data/mixed_results.csv` — Mix of normal, warning, and critical
+- `backend/test_data/normal_results.csv` — All normal lab values
+- `backend/test_data/critical_results.csv` — Critical/abnormal values
+- `backend/test_data/mixed_results.csv` — Mix of normal, warning, and critical
+
+Or paste them directly in the frontend using the **Paste CSV** tab in the form.
 
 ## Example Payloads
 
@@ -199,6 +201,10 @@ Use the CSV files in `test_data/` folder for testing:
 │   │   ├── test_agent.py            # End-to-end agent test
 │   │   ├── test_mcp_client.py       # MCP client connectivity test
 │   │   └── conftest.py              # Pytest configuration
+│   ├── test_data/
+│   │   ├── normal_results.csv       # All normal lab values
+│   │   ├── critical_results.csv     # Critical/abnormal values
+│   │   └── mixed_results.csv        # Mix of normal, warning, critical
 │   └── data/
 │       └── lab_reference_ranges.csv # Lab reference ranges dataset
 │
@@ -215,11 +221,6 @@ Use the CSV files in `test_data/` folder for testing:
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── vite.config.ts
-│
-├── test_data/
-│   ├── normal_results.csv           # All normal lab values
-│   ├── critical_results.csv         # Critical/abnormal values
-│   └── mixed_results.csv            # Mix of normal, warning, critical
 │
 ├── .env                             # Your API keys (not in repo)
 ├── .env.example                     # Template
@@ -258,7 +259,9 @@ Use the CSV files in `test_data/` folder for testing:
 **React Components** (Modular)
 
 - `App.tsx` — Health check, form submission, results display
-- `LabInput.jsx` — Form-based input with add/remove row functionality
+- `LabInput.jsx` — Form-based input with two modes:
+  - **Form Input**: Add/remove rows manually
+  - **Paste CSV**: Paste CSV data (with headers) directly from test_data folder
 - `ResultsDisplay.jsx` — Results grouped by severity with badge/explanation
 - `SeverityBadge.jsx` — Color-coded status chips (🔴 Critical, ⚠️ Warning, ✓ Normal, ❔ Unknown)
 
