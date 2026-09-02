@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from typing import Any, Optional, Union
 
 from fastapi import Body, FastAPI
@@ -7,11 +8,10 @@ from pydantic import BaseModel, Field
 from app.logging_config import logger
 from app.workflows.lab_pipeline import lab_agent, mcp_client
 
-app = FastAPI(title="Clinical Lab Results Analyzer")
 
-
-@app.on_event("startup")
-async def startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
     logger.info("Application startup began")
     try:
         await mcp_client.connect()
@@ -20,10 +20,8 @@ async def startup() -> None:
     except Exception as exc:
         logger.exception(f"Application startup failed while connecting MCP: {exc}")
         raise
-
-
-@app.on_event("shutdown")
-async def shutdown() -> None:
+    yield
+    # Shutdown
     logger.info("Application shutdown started")
     try:
         await mcp_client.close()
@@ -31,6 +29,9 @@ async def shutdown() -> None:
     except Exception as exc:
         logger.exception(f"Error during application shutdown: {exc}")
         raise
+
+
+app = FastAPI(title="Clinical Lab Results Analyzer", lifespan=lifespan)
 
 
 app.add_middleware(

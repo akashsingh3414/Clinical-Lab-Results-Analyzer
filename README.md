@@ -126,17 +126,28 @@ Three synthetic test datasets are provided in `backend/test_data/`:
 
 ## Running Tests
 
-To run the automated backend test suite:
+The backend has a fully automated pytest suite. All tests run **offline** — the MCP client and LLM are monkeypatched so no real API calls are made.
+
+To run the full test suite:
 
 ```powershell
 cd backend
-..\.venv\Scripts\pytest -v tests/test_agent.py
+pytest tests/ -v
 ```
 
-### Verified Test Cases:
-- `test_determine_status`: Validates deviation thresholds for Normal, Warning, Critical, and edge cases.
-- `test_classify_and_route_nodes`: Validates LangGraph state transitions and severity priority sorting.
-- `test_llm_cache_storage`: Validates zero-latency in-memory LLM response caching.
+### Test Files
+
+| File | What it covers |
+|---|---|
+| `test_api.py` | FastAPI endpoints (`/health`, `/analyze_labs`) via `TestClient` |
+| `test_agent.py` | LangGraph agent nodes and state transitions |
+| `test_pipeline.py` | End-to-end pipeline classification and routing |
+| `test_llm.py` | LLM integration and fallback logic |
+| `test_llm_client.py` | LLM client wrapper and in-memory caching |
+| `test_mcp_client.py` | MCP client connection and tool calls |
+| `test_reference_ranges.py` | Reference range deviation thresholds |
+
+> **Note**: `pytest`, `pytest-asyncio`, and `httpx` are included in `requirements.txt` and will be installed with `pip install -r requirements.txt`.
 
 ---
 

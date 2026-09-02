@@ -2,6 +2,10 @@ fastapi
 uvicorn
 langgraph
 langchain-anthropic
+google-genai
 mcp
 python-dotenv
 pydantic
+pytest
+pytest-asyncio
+httpx
