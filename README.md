@@ -21,7 +21,7 @@ React (TypeScript) → FastAPI → LangGraph Agent → Gemini LLM + MCP Server
 ## AI Approach
 
 - **LLM Provider**: Google Gemini (`gemini-3.6-flash`) via Google AI Studio
-- **Reference Data**: 
+- **Reference Data**:
   - Common labs hardcoded (Hemoglobin, Glucose, WBC, etc.)
   - Unknown tests use MCP reference lookup tool
   - No hand-typed catalog — data-driven + fallback pattern
@@ -35,11 +35,11 @@ React (TypeScript) → FastAPI → LangGraph Agent → Gemini LLM + MCP Server
 
 ## Features
 
-✅ **Severity-Based Routing** — Critical results flagged first  
-✅ **Reference Range Comparison** — Automatic range lookup with thresholds  
-✅ **Clinical Explanations** — Gemini generates why each result matters  
-✅ **Edge Case Handling** — Missing/invalid values marked Unknown, no crashes  
-✅ **MCP Fallback** — Unknown lab tests resolved via Model Context Protocol  
+✅ **Severity-Based Routing** — Critical results flagged first
+✅ **Reference Range Comparison** — Automatic range lookup with thresholds
+✅ **Clinical Explanations** — Gemini generates why each result matters
+✅ **Edge Case Handling** — Missing/invalid values marked Unknown, no crashes
+✅ **MCP Fallback** — Unknown lab tests resolved via Model Context Protocol
 
 ## Setup
 
@@ -53,11 +53,13 @@ pip install -r requirements.txt
 ```
 
 Add your Gemini API key to `.env`:
+
 ```
 GOOGLE_API_KEY=your_key_here
 ```
 
 Then start the server:
+
 ```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -105,6 +107,7 @@ curl -X POST http://localhost:8000/analyze_labs \
 ## Example Payloads
 
 ### All Normal Results
+
 ```json
 {
   "raw_results": [
@@ -113,9 +116,11 @@ curl -X POST http://localhost:8000/analyze_labs \
   ]
 }
 ```
+
 **Expected**: Both in "Normal" group with green badges ✓
 
 ### Critical Results
+
 ```json
 {
   "raw_results": [
@@ -124,9 +129,11 @@ curl -X POST http://localhost:8000/analyze_labs \
   ]
 }
 ```
+
 **Expected**: Both in "Critical" group with red badges 🔴, urgent explanations
 
 ### Unknown Test (MCP Fallback)
+
 ```json
 {
   "raw_results": [
@@ -134,9 +141,11 @@ curl -X POST http://localhost:8000/analyze_labs \
   ]
 }
 ```
+
 **Expected**: "Unknown" group with ❔ badge, "Reference range unavailable" message
 
 ### Edge Cases
+
 ```json
 {
   "raw_results": [
@@ -146,6 +155,7 @@ curl -X POST http://localhost:8000/analyze_labs \
   ]
 }
 ```
+
 **Expected**: All marked "Unknown" with explanatory error messages, no crashes
 
 ## Project Structure
@@ -175,17 +185,20 @@ curl -X POST http://localhost:8000/analyze_labs \
 ## Key Implementation Details
 
 ### Phase 3: LangGraph Agent
+
 - `classify_node`: Reference range lookup (hardcoded → MCP fallback)
 - `route_node`: Group by severity threshold
 - `explain_node`: Gemini LLM call for each result
 - `determine_status()`: Maps value to Critical/Warning/Normal based on range
 
 ### Phase 4: FastAPI Integration
+
 - Pydantic models for input validation
 - CORS configured for Vite dev server
 - JSON response grouped by severity
 
 ### Phase 5: React Frontend
+
 - Textarea JSON input (pre-filled with test data)
 - Real-time validation + error handling
 - Color-coded results display by severity
@@ -194,11 +207,13 @@ curl -X POST http://localhost:8000/analyze_labs \
 ## Environment Variables
 
 **`.env` (required)**
+
 ```
 GOOGLE_API_KEY=your_google_ai_studio_key
 ```
 
 **`.env.example`** (template for users)
+
 ```
 GOOGLE_API_KEY=your_key_here
 ```

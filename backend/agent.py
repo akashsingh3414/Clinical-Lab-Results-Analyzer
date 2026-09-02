@@ -1,12 +1,14 @@
 import asyncio
 import json
 import os
+import time
 from typing import Any, Literal
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from langgraph.graph import END, StateGraph
+from logging_config import logger
 
 load_dotenv()
 
@@ -107,77 +109,113 @@ def get_explanation(test_name: str, value: float, unit: str, ref_low: float | No
 
 
 def classify_node(state: dict[str, Any]) -> dict[str, Any]:
-    classified: list[dict[str, Any]] = []
-    for result in state["raw_results"]:
-        test_name = str(result.get("test_name", "")).strip()
-        value = result.get("value")
-        unit = result.get("unit", "")
+    logger.info("→ classify_node started")
+    start = time.time()
+    try:
+        classified: list[dict[str, Any]] = []
+        for result in state["raw_results"]:
+            test_name = str(result.get("test_name", "")).strip()
+            value = result.get("value")
+            unit = result.get("unit", "")
 
-        if not test_name:
-            classified.append({**result, "ref_low": None, "ref_high": None, "status": "Unknown", "explanation": "Missing test name.", "next_step": "Please provide a valid lab test name."})
-            continue
+            if not test_name:
+                classified.append({**result, "ref_low": None, "ref_high": None, "status": "Unknown", "explanation": "Missing test name.", "next_step": "Please provide a valid lab test name."})
+                continue
 
-        if value is None or not isinstance(value, (int, float)):
-            classified.append({**result, "ref_low": None, "ref_high": None, "status": "Unknown", "explanation": "Missing or invalid lab value.", "next_step": "Enter a numeric value for the test."})
-            continue
+            if value is None or not isinstance(value, (int, float)):
+                classified.append({**result, "ref_low": None, "ref_high": None, "status": "Unknown", "explanation": "Missing or invalid lab value.", "next_step": "Enter a numeric value for the test."})
+                continue
 
-        value = float(value)
-        if value < 0:
-            classified.append({**result, "ref_low": None, "ref_high": None, "status": "Unknown", "explanation": "Negative value is invalid for this lab result.", "next_step": "Re-enter a valid positive numeric value."})
-            continue
+            value = float(value)
+            if value < 0:
+                classified.append({**result, "ref_low": None, "ref_high": None, "status": "Unknown", "explanation": "Negative value is invalid for this lab result.", "next_step": "Re-enter a valid positive numeric value."})
+                continue
 
-        ref = HARDCODED_RANGES.get(test_name.lower())
-        if ref is None:
-            ref = call_reference_range_lookup(test_name)
+            ref = HARDCODED_RANGES.get(test_name.lower())
+            if ref is None:
+                ref = call_reference_range_lookup(test_name)
 
-        if ref is None or "error" in ref:
-            status = "Unknown"
-            ref_low = None
-            ref_high = None
-        else:
-            ref_low = float(ref.get("low"))
-            ref_high = float(ref.get("high"))
-            status = determine_status(value, ref_low, ref_high)
+            if ref is None or "error" in ref:
+                status = "Unknown"
+                ref_low = None
+                ref_high = None
+            else:
+                ref_low = float(ref.get("low"))
+                ref_high = float(ref.get("high"))
+                status = determine_status(value, ref_low, ref_high)
 
-        classified.append(
-            {
-                **result,
-                "test_name": test_name,
-                "value": value,
-                "unit": unit,
-                "ref_low": ref_low,
-                "ref_high": ref_high,
-                "status": status,
-            }
-        )
-    return {**state, "classified": classified}
+            classified.append(
+                {
+                    **result,
+                    "test_name": test_name,
+                    "value": value,
+                    "unit": unit,
+                    "ref_low": ref_low,
+                    "ref_high": ref_high,
+                    "status": status,
+                }
+            )
+        elapsed = time.time() - start
+        logger.info(f"✓ classify_node completed in {elapsed:.2f}s ({len(classified)} results)")
+        return {**state, "classified": classified}
+    except Exception as e:
+        elapsed = time.time() - start
+        logger.error(f"✗ classify_node FAILED after {elapsed:.2f}s — {e}")
+        raise
 
 
 def route_node(state: dict[str, Any]) -> dict[str, Any]:
-    grouped = {"Critical": [], "Warning": [], "Normal": [], "Unknown": []}
-    for item in state["classified"]:
-        grouped.setdefault(item["status"], []).append(item)
-    return {**state, "routed": grouped}
+    logger.info("→ route_node started")
+    start = time.time()
+    try:
+        grouped = {"Critical": [], "Warning": [], "Normal": [], "Unknown": []}
+        for item in state["classified"]:
+            grouped.setdefault(item["status"], []).append(item)
+        elapsed = time.time() - start
+        logger.info(f"✓ route_node completed in {elapsed:.2f}s (Critical: {len(grouped['Critical'])}, Warning: {len(grouped['Warning'])}, Normal: {len(grouped['Normal'])}, Unknown: {len(grouped['Unknown'])})")
+        return {**state, "routed": grouped}
+    except Exception as e:
+        elapsed = time.time() - start
+        logger.error(f"✗ route_node FAILED after {elapsed:.2f}s — {e}")
+        raise
 
 
 def explain_node(state: dict[str, Any]) -> dict[str, Any]:
-    for group_name in ["Critical", "Warning", "Normal", "Unknown"]:
-        for result in state["routed"].get(group_name, []):
-            if result["status"] == "Unknown":
-                result["explanation"] = "Reference range unavailable for this test."
-                result["next_step"] = "Manual review recommended."
-                continue
-            explain = get_explanation(
-                result["test_name"],
-                result["value"],
-                result.get("unit", ""),
-                result.get("ref_low"),
-                result.get("ref_high"),
-                result["status"],
-            )
-            result["explanation"] = explain["explanation"]
-            result["next_step"] = explain["next_step"]
-    return state
+    logger.info("→ explain_node started")
+    start = time.time()
+    try:
+        for group_name in ["Critical", "Warning", "Normal", "Unknown"]:
+            for result in state["routed"].get(group_name, []):
+                if result["status"] == "Unknown":
+                    result["explanation"] = "Reference range unavailable for this test."
+                    result["next_step"] = "Manual review recommended."
+                    continue
+                t0 = time.time()
+                try:
+                    explain = get_explanation(
+                        result["test_name"],
+                        result["value"],
+                        result.get("unit", ""),
+                        result.get("ref_low"),
+                        result.get("ref_high"),
+                        result["status"],
+                    )
+                    result["explanation"] = explain["explanation"]
+                    result["next_step"] = explain["next_step"]
+                    t_elapsed = time.time() - t0
+                    logger.info(f"  Gemini call for {result['test_name']} ({result['status']}) — {t_elapsed:.2f}s")
+                except Exception as e:
+                    t_elapsed = time.time() - t0
+                    logger.error(f"  Gemini call FAILED for {result['test_name']} — {e}")
+                    result["explanation"] = "Explanation unavailable (LLM error)."
+                    result["next_step"] = "Manual review recommended."
+        elapsed = time.time() - start
+        logger.info(f"✓ explain_node completed in {elapsed:.2f}s")
+        return state
+    except Exception as e:
+        elapsed = time.time() - start
+        logger.error(f"✗ explain_node FAILED after {elapsed:.2f}s — {e}")
+        raise
 
 
 workflow = StateGraph(dict)
