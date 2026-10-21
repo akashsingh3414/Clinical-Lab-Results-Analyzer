@@ -97,7 +97,7 @@ async def get_explanation_async(
     try:
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
-                model="gemini-3.6-flash",
+                model="gemini-2.5-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(response_mime_type="application/json"),
             ),
@@ -121,4 +121,3 @@ async def get_explanation_async(
     fallback = _generate_fallback_explanation(test_name, value, unit, ref_low, ref_high, status)
     EXPLANATION_CACHE[cache_key] = fallback
     return fallback
-

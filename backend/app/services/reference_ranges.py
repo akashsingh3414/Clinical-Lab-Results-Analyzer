@@ -58,6 +58,9 @@ def load_reference_ranges() -> dict[str, dict[str, float | str]]:
     return ranges
 
 
+REFERENCE_RANGES = load_reference_ranges()
+
+
 def build_reference_lookup_payload(reference: dict[str, Any] | None) -> dict[str, Any] | None:
     if reference is None or "error" in reference:
         return reference

@@ -1,4 +1,4 @@
-from contextlib import asynccontextmanager
+import os
 from typing import Any, Optional, Union
 
 from fastapi import Body, FastAPI
@@ -6,44 +6,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from app.logging_config import logger
-from app.workflows.lab_pipeline import lab_agent, mcp_client
+from app.workflows.lab_pipeline import lab_agent
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    logger.info("Application startup began")
-    try:
-        await mcp_client.connect()
-        logger.info("MCP client connected successfully")
-        logger.info("Application startup complete")
-    except Exception as exc:
-        logger.exception(f"Application startup failed while connecting MCP: {exc}")
-        raise
-    yield
-    # Shutdown
-    logger.info("Application shutdown started")
-    try:
-        await mcp_client.close()
-        logger.info("MCP client closed successfully")
-    except Exception as exc:
-        logger.exception(f"Error during application shutdown: {exc}")
-        raise
-
-
-app = FastAPI(title="Clinical Lab Results Analyzer", lifespan=lifespan)
+app = FastAPI(title="Clinical Lab Results Analyzer")
+frontend_origins = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=frontend_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health() -> dict:
     logger.info("Health check requested")
     return {"status": "ok"}
@@ -61,6 +45,7 @@ class LabBatchInput(BaseModel):
 
 
 @app.post("/analyze_labs")
+@app.post("/api/analyze_labs")
 async def analyze_labs(
     payload: Union[LabBatchInput, list[LabResultInput], dict[str, Any]] = Body(...),
 ) -> dict:
@@ -87,4 +72,3 @@ async def analyze_labs(
     except Exception as exc:
         logger.exception(f"Analyze request failed: {exc}")
         raise
-

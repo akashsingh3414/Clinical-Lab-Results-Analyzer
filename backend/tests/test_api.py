@@ -1,6 +1,6 @@
 """Tests for the FastAPI endpoints (/health and /analyze_labs).
 
-The MCP client and LLM are monkeypatched so these tests are fully offline.
+The LLM is monkeypatched so these tests do not make network calls.
 """
 
 import pytest
@@ -14,19 +14,9 @@ from app.api import app
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
-def patch_mcp_and_llm(monkeypatch):
-    """Stub out MCP connect/close and the LLM so no network calls are made."""
-    import app.services.mcp_client as mcp_mod
+def patch_llm(monkeypatch):
+    """Stub out the LLM so API tests do not make network calls."""
     import app.services.llm_client as llm_mod
-
-    # MCP stubs
-    async def _noop_connect(self): self.session = object()  # truthy sentinel
-    async def _noop_close(self):   self.session = None
-    async def _noop_lookup(self, test_name): return None
-
-    monkeypatch.setattr(mcp_mod.MCPClientSingleton, "connect", _noop_connect)
-    monkeypatch.setattr(mcp_mod.MCPClientSingleton, "close",   _noop_close)
-    monkeypatch.setattr(mcp_mod.MCPClientSingleton, "call_reference_lookup", _noop_lookup)
 
     # LLM stub — return a deterministic explanation
     async def _fake_explanation(test_name, value, unit, ref_low, ref_high, status, timeout=10):
@@ -58,6 +48,11 @@ class TestHealthEndpoint:
         resp = client.get("/health")
         assert resp.json() == {"status": "ok"}
 
+    def test_api_prefixed_health_route(self, client):
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
 
 # ---------------------------------------------------------------------------
 # /analyze_labs — input format variants
@@ -73,6 +68,10 @@ class TestAnalyzeLabsEndpoint:
 
     def test_raw_results_200(self, client):
         resp = client.post("/analyze_labs", json={"raw_results": [self.NORMAL_HGB]})
+        assert resp.status_code == 200
+
+    def test_api_prefixed_route(self, client):
+        resp = client.post("/api/analyze_labs", json={"raw_results": [self.NORMAL_HGB]})
         assert resp.status_code == 200
 
     def test_raw_results_response_shape(self, client):

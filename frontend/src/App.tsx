@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import LabInput from './components/LabInput';
 import ResultsDisplay from './components/ResultsDisplay';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
+
 type LabResult = {
   test_name: string;
   value: number;
@@ -31,7 +33,7 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:8000/health')
+    fetch(`${API_BASE_URL}/health`)
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -58,7 +60,7 @@ function App() {
       setBackendError('');
 
       const requestBody = Array.isArray(payload) ? { raw_results: payload } : payload;
-      const response = await fetch('http://localhost:8000/analyze_labs', {
+      const response = await fetch(`${API_BASE_URL}/analyze_labs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
@@ -100,7 +102,7 @@ function App() {
               Clinical Lab Results Analyzer
             </h1>
             <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 500 }}>
-              Explainable GenAI Clinical Assistant · MCP Protocol
+              Explainable GenAI Clinical Assistant · Reference Data
             </div>
           </div>
 
@@ -130,7 +132,7 @@ function App() {
                   display: 'inline-block',
                 }}
               />
-              {health === 'ok' ? 'Backend & MCP Active' : health === 'checking' ? 'Connecting...' : 'Backend Offline'}
+              {health === 'ok' ? 'Backend Active' : health === 'checking' ? 'Connecting...' : 'Backend Offline'}
             </div>
           </div>
         </div>

@@ -6,17 +6,17 @@ from langgraph.graph import END, StateGraph
 
 from app.logging_config import logger
 from app.services.llm_client import get_explanation_async
-from app.services.reference_ranges import HARDCODED_RANGES, build_reference_lookup_payload, normalize_name
-from app.services.mcp_client import MCPClientSingleton
-
-mcp_client = MCPClientSingleton.get()
+from app.services.reference_ranges import (
+    HARDCODED_RANGES,
+    REFERENCE_RANGES,
+    build_reference_lookup_payload,
+    normalize_name,
+)
 
 
 async def call_reference_range_lookup(test_name: str) -> dict[str, Any] | None:
-    try:
-        return await mcp_client.call_reference_lookup(test_name)
-    except Exception:
-        return None
+    reference = REFERENCE_RANGES.get(normalize_name(test_name))
+    return reference if reference is not None else {"error": f"No reference range found for '{test_name}'"}
 
 
 def determine_status(value: float, ref_low: float | None, ref_high: float | None) -> Literal["Normal", "Warning", "Critical", "Unknown"]:
